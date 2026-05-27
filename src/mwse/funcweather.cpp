@@ -181,7 +181,9 @@ bool mwseSetWeatherGlare::execute(mwseInstruction* _this) {
     if (!_this->vmPop(&x)) { return false; }
 
     MWWeather* w = (MWWeather*)MWBridge::get()->GetWthrStruct(weather_id);
-    w->glareView = x;
+    if (w) {
+        w->glareView = x;
+    }
 
     return true;
 }
@@ -198,7 +200,9 @@ bool mwseSetWeatherCloudSpeed::execute(mwseInstruction* _this) {
     if (!_this->vmPop(&x)) { return false; }
 
     MWWeather* w = (MWWeather*)MWBridge::get()->GetWthrStruct(weather_id);
-    w->cloudSpeed = x;
+    if (w) {
+        w->cloudSpeed = x;
+    }
 
     return true;
 }
@@ -215,7 +219,9 @@ bool mwseSetWeatherWindSpeed::execute(mwseInstruction* _this) {
     if (!_this->vmPop(&x)) { return false; }
 
     MWWeather* w = (MWWeather*)MWBridge::get()->GetWthrStruct(weather_id);
-    w->windSpeed = x;
+    if (w) {
+        w->windSpeed = x;
+    }
 
     return true;
 }
@@ -229,7 +235,7 @@ bool mwseGetWeatherDLFog::execute(mwseInstruction* _this) {
 
     if (!_this->vmPop(&weather_id)) { return false; }
 
-    if (weather_id >= 0 && weather_id <= 9) {
+    if (weather_id >= 0 && weather_id <= kMaxWeatherID) {
         _this->vmPush(Configuration.DL.FogD[weather_id]);
         _this->vmPush(Configuration.DL.FgOD[weather_id]);
     }
@@ -249,7 +255,7 @@ bool mwseSetWeatherDLFog::execute(mwseInstruction* _this) {
     if (!_this->vmPop(&dist)) { return false; }
     if (!_this->vmPop(&offset)) { return false; }
 
-    if (weather_id >= 0 && weather_id <= 9) {
+    if (weather_id >= 0 && weather_id <= kMaxWeatherID) {
         Configuration.DL.FogD[weather_id] = dist;
         Configuration.DL.FgOD[weather_id] = offset;
     }
@@ -266,7 +272,7 @@ bool mwseGetWeatherPPLLight::execute(mwseInstruction* _this) {
 
     if (!_this->vmPop(&weather_id)) { return false; }
 
-    if (weather_id >= 0 && weather_id <= 9) {
+    if (weather_id >= 0 && weather_id <= kMaxWeatherID) {
         _this->vmPush(Configuration.Lighting.SunMult[weather_id]);
         _this->vmPush(Configuration.Lighting.AmbMult[weather_id]);
     }
@@ -286,7 +292,7 @@ bool mwseSetWeatherPPLLight::execute(mwseInstruction* _this) {
     if (!_this->vmPop(&sun)) { return false; }
     if (!_this->vmPop(&amb)) { return false; }
 
-    if (weather_id >= 0 && weather_id <= 9) {
+    if (weather_id >= 0 && weather_id <= kMaxWeatherID) {
         Configuration.Lighting.SunMult[weather_id] = sun;
         Configuration.Lighting.AmbMult[weather_id] = amb;
     }

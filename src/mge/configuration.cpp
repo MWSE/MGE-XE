@@ -148,6 +148,32 @@ bool ConfigurationStruct::LoadSettings() {
             }
         }
     }
+
+    auto loadFloat = [&](float& target, const char* section, const char* key, const char* defval, double min, double max) {
+        iniSetting set = { &target, t_float, 1, section, key, defval, NULL, MINMAX, min, max };
+        GetPrivateProfileString(section, key, defval, buffer, countof(buffer), mgeini);
+        target = (float)getSettingValue(buffer, set);
+    };
+
+    // Custom weather slots use generic numeric keys so they can scale beyond the vanilla 10 entries.
+    for (int weatherID = kVanillaWeatherCount; weatherID <= kMaxWeatherID; ++weatherID) {
+        char key[64];
+
+        std::snprintf(key, sizeof(key), "Weather%d Wind Ratio", weatherID);
+        loadFloat(Configuration.DL.Wind[weatherID], siniDLWeather, key, "0.1", 0, 1);
+
+        std::snprintf(key, sizeof(key), "Weather%d Fog Ratio", weatherID);
+        loadFloat(Configuration.DL.FogD[weatherID], siniDLWeather, key, "1", 0.001, 2);
+
+        std::snprintf(key, sizeof(key), "Weather%d Fog Offset", weatherID);
+        loadFloat(Configuration.DL.FgOD[weatherID], siniDLWeather, key, "0", 0, 200);
+
+        std::snprintf(key, sizeof(key), "Weather%d Sun Brightness", weatherID);
+        loadFloat(Configuration.Lighting.SunMult[weatherID], siniPPLighting, key, "1", 0, 10);
+
+        std::snprintf(key, sizeof(key), "Weather%d Ambient Brightness", weatherID);
+        loadFloat(Configuration.Lighting.AmbMult[weatherID], siniPPLighting, key, "1", 0, 10);
+    }
     return true;
 }
 
@@ -237,6 +263,40 @@ bool ConfigurationStruct::SaveSettings() {
             if (WritePrivateProfileString(set.section, set.key, buffer, mgeini) == 0) {
                 return false;
             }
+        }
+    }
+
+    auto saveFloat = [&](const char* section, const char* key, float value) {
+        int strSize = std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+        return strSize > 0 && WritePrivateProfileString(section, key, buffer, mgeini) != 0;
+    };
+
+    for (int weatherID = kVanillaWeatherCount; weatherID <= kMaxWeatherID; ++weatherID) {
+        char key[64];
+
+        std::snprintf(key, sizeof(key), "Weather%d Wind Ratio", weatherID);
+        if (!saveFloat(siniDLWeather, key, Configuration.DL.Wind[weatherID])) {
+            return false;
+        }
+
+        std::snprintf(key, sizeof(key), "Weather%d Fog Ratio", weatherID);
+        if (!saveFloat(siniDLWeather, key, Configuration.DL.FogD[weatherID])) {
+            return false;
+        }
+
+        std::snprintf(key, sizeof(key), "Weather%d Fog Offset", weatherID);
+        if (!saveFloat(siniDLWeather, key, Configuration.DL.FgOD[weatherID])) {
+            return false;
+        }
+
+        std::snprintf(key, sizeof(key), "Weather%d Sun Brightness", weatherID);
+        if (!saveFloat(siniPPLighting, key, Configuration.Lighting.SunMult[weatherID])) {
+            return false;
+        }
+
+        std::snprintf(key, sizeof(key), "Weather%d Ambient Brightness", weatherID);
+        if (!saveFloat(siniPPLighting, key, Configuration.Lighting.AmbMult[weatherID])) {
+            return false;
         }
     }
     return true;

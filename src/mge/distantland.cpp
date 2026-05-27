@@ -417,7 +417,7 @@ void DistantLand::adjustFog() {
         int wthr1 = mwBridge->GetCurrentWeather(), wthr2 = mwBridge->GetNextWeather();
         float ratio = mwBridge->GetWeatherRatio(), ff = 1.0, fo = 0.0, ws = 0.0;
 
-        if (ratio != 0 && wthr2 >= 0 && wthr2 <= 9) {
+        if (ratio != 0 && wthr1 >= 0 && wthr1 <= kMaxWeatherID && wthr2 >= 0 && wthr2 <= kMaxWeatherID) {
             ff = float(lerp(Configuration.DL.FogD[wthr1], Configuration.DL.FogD[wthr2], ratio));
             fo = float(0.01 * lerp(Configuration.DL.FgOD[wthr1], Configuration.DL.FgOD[wthr2], ratio));
             ws = float(lerp(Configuration.DL.Wind[wthr1], Configuration.DL.Wind[wthr2], ratio));
@@ -425,7 +425,7 @@ void DistantLand::adjustFog() {
             niceWeather *= niceWeather;
             lightSunMult = float(lerp(Configuration.Lighting.SunMult[wthr1], Configuration.Lighting.SunMult[wthr2], ratio));
             lightAmbMult = float(lerp(Configuration.Lighting.AmbMult[wthr1], Configuration.Lighting.AmbMult[wthr2], ratio));
-        } else if (wthr1 >= 0 && wthr1 <= 9) {
+        } else if (wthr1 >= 0 && wthr1 <= kMaxWeatherID) {
             ff = Configuration.DL.FogD[wthr1];
             fo = Configuration.DL.FgOD[wthr1] / 100.0f;
             ws = Configuration.DL.Wind[wthr1];
