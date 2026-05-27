@@ -174,7 +174,7 @@ protected:
 
              eLoad,
 
-             eWthrArray, eCurWthrStruct, eNextWthrStruct,
+             eWthrArray, eCstmWthrArray, eCurWthrStruct, eNextWthrStruct,
              eCurSkyCol, eCurFogCol,
              eWindVector,
              eSunriseHour, eSunsetHour, eSunriseDuration, eSunsetDuration,

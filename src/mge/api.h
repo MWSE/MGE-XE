@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include "weatherdefs.h"
 
 namespace api {
 	static const int supported_api_version = 3;
@@ -27,9 +28,9 @@ namespace api {
 		unsigned char WaterWaveHeight;
 		unsigned char WaterCaustics;
 		unsigned int ShadowResolution;
-		float Wind[10];
-		float FogDist[10];
-		float FogOffset[10];
+		float Wind[kWeatherCount];
+		float FogDist[kWeatherCount];
+		float FogOffset[kWeatherCount];
 	};
 
 	enum struct LightingMode {

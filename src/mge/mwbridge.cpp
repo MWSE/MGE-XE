@@ -2,6 +2,7 @@
 // Memory layout originally worked out by Alexander Stasenko
 
 #include "mwbridge.h"
+#include "weatherdefs.h"
 #include "assert.h"
 
 #include <cmath>
@@ -124,7 +125,9 @@ void MWBridge::Load() {
 
     eGammaFunc = read_dword(read_dword(eMaster2) + 0x50);
 
-    eWthrArray = read_dword(eMaster1 + 0x58) + 0x14;
+    const auto weatherController = read_dword(eMaster1 + 0x58);
+    eWthrArray = weatherController + 0x14;
+    eCstmWthrArray = weatherController + 0x1F0;
     eCurWthrStruct = eWthrArray + 0x28;  // 0x3c
     eNextWthrStruct = eCurWthrStruct + 0x04;  // 0x40
     eCurSkyCol = eNextWthrStruct + 0x50;  // 0x90
@@ -456,8 +459,11 @@ float* MWBridge::GetWindVector() {
 
 DWORD MWBridge::GetWthrStruct(int wthr) {
     assert(m_loaded);
-    if (wthr >= 0 && wthr <= 9) {
+    if (wthr >= 0 && wthr < kVanillaWeatherCount) {
         return read_dword(eWthrArray + 4*wthr);
+    }
+    if (wthr > 9 && wthr <= kMaxWeatherID) {
+        return read_dword(eCstmWthrArray + 4*(wthr - kVanillaWeatherCount));
     }
     return 0;
 }
