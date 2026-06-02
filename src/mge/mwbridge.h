@@ -4,6 +4,10 @@
 
 
 
+namespace mwse {
+    struct MWSEAPIv1;
+}
+
 //-----------------------------------------------------------------------------
 
 class MWBridge {
@@ -19,6 +23,7 @@ public:
     // Used to determine whether we have connected to Morrowind's dynamic memory yet
     inline bool IsLoaded();
     bool CanLoad();
+    void setMWSEInterface(mwse::MWSEAPIv1* api);
 
     DWORD GetAlwaysRun();
     DWORD GetAutoRun();
@@ -43,6 +48,9 @@ public:
     DWORD GetCurrentWeather();
     DWORD GetNextWeather();
     float GetWeatherRatio();
+    bool GetWeatherExists(int wthr);
+    bool GetWeatherHasFog(int wthr);
+    float GetWeatherRippleFactor(int wthr);
     const RGBVECTOR* getCurrentWeatherSkyCol();
     const RGBVECTOR* getCurrentWeatherFogCol();
     DWORD getScenegraphFogCol();
@@ -144,6 +152,7 @@ public:
 protected:
     DWORD m_version;
     bool m_loaded;
+    mwse::MWSEAPIv1* m_mwseAPI;
 
     /// Sets pointers to static memory of Morrowind
     void InitStaticMemory();

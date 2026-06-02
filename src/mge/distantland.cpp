@@ -416,20 +416,22 @@ void DistantLand::adjustFog() {
     } else if (mwBridge->CellHasWeather()) {
         int wthr1 = mwBridge->GetCurrentWeather(), wthr2 = mwBridge->GetNextWeather();
         float ratio = mwBridge->GetWeatherRatio(), ff = 1.0, fo = 0.0, ws = 0.0;
+        bool wthr1exists = mwBridge->GetWeatherExists(wthr1), wthr2exists = mwBridge->GetWeatherExists(wthr2);
+        bool wthr1nice = !mwBridge->GetWeatherHasFog(wthr1), wthr2nice = !mwBridge->GetWeatherHasFog(wthr2);
 
-        if (ratio != 0 && wthr1 >= 0 && wthr1 <= kMaxWeatherID && wthr2 >= 0 && wthr2 <= kMaxWeatherID) {
+        if (ratio != 0 && wthr1exists && wthr2exists && wthr1 <= kMaxWeatherID && wthr2 <= kMaxWeatherID) {
             ff = float(lerp(Configuration.DL.FogD[wthr1], Configuration.DL.FogD[wthr2], ratio));
             fo = float(0.01 * lerp(Configuration.DL.FgOD[wthr1], Configuration.DL.FgOD[wthr2], ratio));
             ws = float(lerp(Configuration.DL.Wind[wthr1], Configuration.DL.Wind[wthr2], ratio));
-            niceWeather = float(lerp((wthr1 <= 1) ? 1.0 : 0.0, (wthr2 <= 1) ? 1.0 : 0.0, ratio));
+            niceWeather = float(lerp(wthr1nice ? 1.0 : 0.0, wthr2nice ? 1.0 : 0.0, ratio));
             niceWeather *= niceWeather;
             lightSunMult = float(lerp(Configuration.Lighting.SunMult[wthr1], Configuration.Lighting.SunMult[wthr2], ratio));
             lightAmbMult = float(lerp(Configuration.Lighting.AmbMult[wthr1], Configuration.Lighting.AmbMult[wthr2], ratio));
-        } else if (wthr1 >= 0 && wthr1 <= kMaxWeatherID) {
+        } else if (wthr1exists && wthr1 <= kMaxWeatherID) {
             ff = Configuration.DL.FogD[wthr1];
             fo = Configuration.DL.FgOD[wthr1] / 100.0f;
             ws = Configuration.DL.Wind[wthr1];
-            niceWeather = (wthr1 <= 1) ? 1.0f : 0.0f;
+            niceWeather = wthr1nice ? 1.0f : 0.0f;
             lightSunMult = Configuration.Lighting.SunMult[wthr1];
             lightAmbMult = Configuration.Lighting.AmbMult[wthr1];
         }
