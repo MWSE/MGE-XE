@@ -7,6 +7,7 @@
 #include "support/log.h"
 
 #include <cstdio>
+#include <cstring>
 
 
 
@@ -18,8 +19,17 @@ static void setDPIScalingAware();
 
 static const char* welcomeMessage = XE_VERSION_STRING;
 static bool isMW;
+static bool isCS;
 
-
+static void OpenLog() {
+    if (isMW) {
+        LOG::open("mgeXE.log");
+    }
+    else if (isCS) {
+        LOG::open("mgeXE-CS.log");
+    }
+    LOG::logline(welcomeMessage);
+}
 
 extern "C" BOOL _stdcall DllMain(HANDLE hModule, DWORD reason, void* unused) {
     if (reason != DLL_PROCESS_ATTACH) {
@@ -27,12 +37,23 @@ extern "C" BOOL _stdcall DllMain(HANDLE hModule, DWORD reason, void* unused) {
     }
 
     // Check if MW is in-process, avoid hooking the CS
-    isMW = bool(GetModuleHandle("Morrowind.exe"));
+    isMW = bool(GetModuleHandleA("Morrowind.exe"));
+    isCS = bool(GetModuleHandleA("TES Construction Set.exe"));
+    const auto affectsModule = isMW || isCS;
+    if (!affectsModule) {
+        return true;
+    }
+
+    OpenLog();
+
+    if (GetModuleHandleA(nullptr) != reinterpret_cast<HMODULE>(0x400000)) {
+        LOG::logline("ERROR: Application was relocated from its expected base address. Disable compatibility shims or Exploit Protection forced ASLR for this executable.");
+        LOG::logline("MGE XE load failed.");
+
+        return true;
+    }
 
     if (isMW) {
-        LOG::open("mgeXE.log");
-        LOG::logline(welcomeMessage);
-
         setDPIScalingAware();
 
         if (!Configuration.LoadSettings()) {
@@ -60,7 +81,20 @@ extern "C" BOOL _stdcall DllMain(HANDLE hModule, DWORD reason, void* unused) {
                 }
                 LOG::logline("MWSE.dll injected.");
             } else {
-                LOG::logline("MWSE.dll failed to load.");
+                const auto lastError = GetLastError();
+                char message[1024] = {};
+                FormatMessageA(
+                    FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                    nullptr,
+                    lastError,
+                    0,
+                    message,
+                    sizeof(message),
+                    nullptr
+                );
+                message[std::strcspn(message, "\r\n")] = '\0';
+
+                LOG::logline("MWSE failed to load. Last error (%lu): %s ", lastError, message);
             }
         } else {
             LOG::logline("MWSE is disabled.");
@@ -68,10 +102,28 @@ extern "C" BOOL _stdcall DllMain(HANDLE hModule, DWORD reason, void* unused) {
     }
 
     // Load extender for CS, if Construction Set detected
-    bool isCS = bool(GetModuleHandle("TES Construction Set.exe"));
     if (isCS) {
         // Load CSSE dll, it injects by itself
-        LoadLibraryA("CSSE.dll");
+        const auto hCSSE = LoadLibraryA("CSSE.dll");
+        if (hCSSE) {
+            LOG::logline("CSSE.dll injected.");
+        }
+        else {
+            const auto lastError = GetLastError();
+            char message[1024] = {};
+            FormatMessageA(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr,
+                lastError,
+                0,
+                message,
+                sizeof(message),
+                nullptr
+            );
+            message[std::strcspn(message, "\r\n")] = '\0';
+
+            LOG::logline("CSSE failed to load. Last error (%lu): %s ", lastError, message);
+        }
     }
 
     return true;
