@@ -736,28 +736,28 @@ namespace api {
     }
 
     void MGEAPIv1::weatherDistantFogGet(int weatherID, float* fogDistMult, float* fogOffset) {
-        if (weatherID >= 0 && weatherID <= 9) {
+        if (weatherID >= 0 && weatherID <= kMaxWeatherID) {
             *fogDistMult = Configuration.DL.FogD[weatherID];
             *fogOffset = Configuration.DL.FgOD[weatherID];
         }
     }
 
     void MGEAPIv1::weatherDistantFogSet(int weatherID, float fogDistMult, float fogOffset) {
-        if (weatherID >= 0 && weatherID <= 9) {
+        if (weatherID >= 0 && weatherID <= kMaxWeatherID) {
             Configuration.DL.FogD[weatherID] = fogDistMult;
             Configuration.DL.FgOD[weatherID] = fogOffset;
         }
     }
 
     void MGEAPIv1::weatherPerPixelLightGet(int weatherID, float* sunMult, float* ambMult) {
-        if (weatherID >= 0 && weatherID <= 9) {
+        if (weatherID >= 0 && weatherID <= kMaxWeatherID) {
             *sunMult = Configuration.Lighting.SunMult[weatherID];
             *ambMult = Configuration.Lighting.AmbMult[weatherID];
         }
     }
 
     void MGEAPIv1::weatherPerPixelLightSet(int weatherID, float sunMult, float ambMult) {
-        if (weatherID >= 0 && weatherID <= 9) {
+        if (weatherID >= 0 && weatherID <= kMaxWeatherID) {
             Configuration.Lighting.SunMult[weatherID] = sunMult;
             Configuration.Lighting.AmbMult[weatherID] = ambMult;
         }

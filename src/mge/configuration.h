@@ -1,6 +1,7 @@
 #pragma once
 
 #include <basetyps.h>
+#include "weatherdefs.h"
 
 
 
@@ -132,14 +133,14 @@ struct ConfigurationStruct {
         BYTE WaterWaveHeight;
         BYTE WaterCaustics;
         DWORD ShadowResolution;
-        float Wind[10];
-        float FogD[10];
-        float FgOD[10];
+        float Wind[kWeatherCount];
+        float FogD[kWeatherCount];
+        float FgOD[kWeatherCount];
     } DL;
 
     struct {
-        float SunMult[10];
-        float AmbMult[10];
+        float SunMult[kWeatherCount];
+        float AmbMult[kWeatherCount];
     } Lighting;
 
     struct {

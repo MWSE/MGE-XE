@@ -2,7 +2,9 @@
 // Memory layout originally worked out by Alexander Stasenko
 
 #include "mwbridge.h"
+#include "weatherdefs.h"
 #include "assert.h"
+#include "../../3rdparty/mwse/MWSEInterface.h"
 
 #include <cmath>
 
@@ -43,6 +45,12 @@ MWBridge::~MWBridge() {
 
 MWBridge* MWBridge::get() {
     return &m_instance;
+}
+
+//-----------------------------------------------------------------------------
+
+void MWBridge::setMWSEInterface(mwse::MWSEAPIv1* api) {
+    m_mwseAPI = api;
 }
 
 //-----------------------------------------------------------------------------
@@ -124,7 +132,9 @@ void MWBridge::Load() {
 
     eGammaFunc = read_dword(read_dword(eMaster2) + 0x50);
 
-    eWthrArray = read_dword(eMaster1 + 0x58) + 0x14;
+    const auto weatherController = read_dword(eMaster1 + 0x58);
+    eWthrArray = weatherController + 0x14;
+    eCstmWthrArray = weatherController + 0x1F0;
     eCurWthrStruct = eWthrArray + 0x28;  // 0x3c
     eNextWthrStruct = eCurWthrStruct + 0x04;  // 0x40
     eCurSkyCol = eNextWthrStruct + 0x50;  // 0x90
@@ -367,6 +377,11 @@ void MWBridge::DisableMusic() {
 
 DWORD MWBridge::GetCurrentWeather() {
     assert(m_loaded);
+    if (m_mwseAPI) {
+        const int weather = m_mwseAPI->getWeatherCurrent();
+        return weather >= 0 ? weather : 0;
+    }
+
     DWORD weather = read_dword(eCurWthrStruct);
     if (weather == 0) {
         return 0;
@@ -378,6 +393,11 @@ DWORD MWBridge::GetCurrentWeather() {
 
 DWORD MWBridge::GetNextWeather() {
     assert(m_loaded);
+    if (m_mwseAPI) {
+        const int weather = m_mwseAPI->getWeatherNext();
+        return weather >= 0 ? weather : GetCurrentWeather();
+    }
+
     DWORD weather = read_dword(eNextWthrStruct);
     if (weather == 0) {
         return GetCurrentWeather();
@@ -389,7 +409,43 @@ DWORD MWBridge::GetNextWeather() {
 
 float MWBridge::GetWeatherRatio() {
     assert(m_loaded);
+    if (m_mwseAPI) {
+        return m_mwseAPI->getWeatherLerp();
+    }
     return read_float(eWeatherRatio);
+}
+
+//-----------------------------------------------------------------------------
+
+bool MWBridge::GetWeatherExists(int wthr) {
+    assert(m_loaded);
+    if (m_mwseAPI) {
+        return m_mwseAPI->getWeatherExists(wthr);
+    }
+    return wthr >= 0 && wthr <= kMaxWeatherID;
+}
+
+//-----------------------------------------------------------------------------
+
+bool MWBridge::GetWeatherHasFog(int wthr) {
+    assert(m_loaded);
+    if (m_mwseAPI) {
+        return m_mwseAPI->getWeatherHasFog(wthr);
+    }
+    return wthr <= 1;
+}
+
+//-----------------------------------------------------------------------------
+
+float MWBridge::GetWeatherRippleFactor(int wthr) {
+    assert(m_loaded);
+    if (m_mwseAPI) {
+        return m_mwseAPI->getWeatherRippleFactor(wthr);
+    }
+
+    float precipitation = (wthr == 4 || wthr == 5 || wthr == 8 || wthr == 9) ? 1.0f : -1.5f;
+    precipitation += (wthr == 5) ? 0.5f : 0;
+    return precipitation;
 }
 
 //-----------------------------------------------------------------------------
@@ -456,8 +512,11 @@ float* MWBridge::GetWindVector() {
 
 DWORD MWBridge::GetWthrStruct(int wthr) {
     assert(m_loaded);
-    if (wthr >= 0 && wthr <= 9) {
+    if (wthr >= 0 && wthr < kVanillaWeatherCount) {
         return read_dword(eWthrArray + 4*wthr);
+    }
+    if (wthr >= kVanillaWeatherCount && wthr <= kMaxWeatherID) {
+        return read_dword(eCstmWthrArray + 4*(wthr - kVanillaWeatherCount));
     }
     return 0;
 }

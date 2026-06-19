@@ -11,7 +11,9 @@
 #include "funcphysics.h"
 #include "mgebridge.h"
 #include "mge/api.h"
+#include "mge/mwbridge.h"
 #include "support/winheader.h"
+#include "../../3rdparty/mwse/MWSEInterface.h"
 
 
 
@@ -19,6 +21,7 @@ struct TES3MACHINE;
 typedef TES3MACHINE* (*MWSEGetVM_t)();
 typedef bool (*MGEInterface_t)(api::MGEAPI*);
 typedef bool (*MWSEAddInstruction_t)(OPCODE, mwseInstruction*);
+typedef mwse::MWSEAPI* (*MWSEGetInterface_t)(int);
 typedef bool (__thiscall* addInstruction_t)(TES3MACHINE*, OPCODE, mwseInstruction*);
 
 static TES3MACHINE* vm;
@@ -58,11 +61,19 @@ void MWSE_MGEPlugin::init(HMODULE dll) {
     MGEInterface_t MGEInterface = (MGEInterface_t)GetProcAddress(dll, "MGEInterface");
     MWSEGetVM_t MWSEGetVM = (MWSEGetVM_t)GetProcAddress(dll, "MWSEGetVM");
     MWSEAddInstruction_t MWSEAddInstruction = (MWSEAddInstruction_t)GetProcAddress(dll, "MWSEAddInstruction");
+    MWSEGetInterface_t MWSEGetInterface = (MWSEGetInterface_t)GetProcAddress(dll, "MWSEGetInterface");
 
     if (MGEInterface) {
         // Create and pass API instance to MWSE 2.1+
         api::api = new api::MGEAPI_ExportVersion();
         MGEInterface(api::api);
+    }
+
+    if (MWSEGetInterface) {
+        mwse::MWSEAPI* mwseAPI = MWSEGetInterface(mwse::supported_api_version);
+        if (mwseAPI && mwseAPI->getAPIVersion() >= 1) {
+            MWBridge::get()->setMWSEInterface(static_cast<mwse::MWSEAPIv1*>(mwseAPI));
+        }
     }
 
     if (MWSEGetVM && MWSEAddInstruction) {

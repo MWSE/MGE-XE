@@ -282,10 +282,8 @@ void DistantLand::simulateDynamicWaves() {
         // Weather types: rain = 4; thunderstorm = 5; snow = 8; blizzard = 9
         // Thunderstorm causes 50% more ripples
         int w0 = mwBridge->GetCurrentWeather(), w1 = mwBridge->GetNextWeather();
-        float precipitation0 = (w0 == 4 || w0 == 5 || w0 == 8 || w0 == 9) ? 1.0f : -1.5f;
-        float precipitation1 = (w1 == 4 || w1 == 5 || w1 == 8 || w1 == 9) ? 1.0f : -1.5f;
-        precipitation0 += (w0 == 5) ? 0.5f : 0;
-        precipitation1 += (w1 == 5) ? 0.5f : 0;
+        const float precipitation0 = mwBridge->GetWeatherRippleFactor(w0);
+        const float precipitation1 = mwBridge->GetWeatherRippleFactor(w1);
 
         // 150 drops per second for normal precipitation
         float precipitation = (1.0f - mwBridge->GetWeatherRatio()) * precipitation0 + mwBridge->GetWeatherRatio() * precipitation1;

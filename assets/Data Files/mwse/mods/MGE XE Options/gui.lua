@@ -280,7 +280,48 @@ local function createPPLCycler(parent, text)
 end
 
 local function weatherLabel(weatherID)
-	return this.i18n(string.format("Weather%d", weatherID))
+	local key = string.format("Weather%d", weatherID)
+	local label = this.i18n(key)
+	if label ~= nil and label ~= "" and label ~= key then
+		return label
+	end
+
+	local weatherController = tes3.worldController and tes3.worldController.weatherController
+	local weather = weatherController and weatherController.weathers and weatherController.weathers[weatherID + 1]
+	if weather and weather.name and weather.name ~= "" then
+		return weather.name
+	end
+
+	return string.format("Weather %d", weatherID)
+end
+
+local function getWeatherIDs()
+	local weatherIDs = {}
+	local seen = {}
+
+	for _, weatherID in pairs(tes3.weather) do
+		if type(weatherID) == "number" and not seen[weatherID] then
+			seen[weatherID] = true
+			table.insert(weatherIDs, weatherID)
+		end
+	end
+
+	local weatherController = tes3.worldController and tes3.worldController.weatherController
+	local weathers = weatherController and weatherController.weathers
+	if weathers then
+		for index, weather in ipairs(weathers) do
+			if weather ~= nil then
+				local weatherID = index - 1
+				if not seen[weatherID] then
+					seen[weatherID] = true
+					table.insert(weatherIDs, weatherID)
+				end
+			end
+		end
+	end
+
+	table.sort(weatherIDs)
+	return weatherIDs
 end
 
 
@@ -513,7 +554,7 @@ function this.run()
 	element.borderLeft = 160
 	element:createLabel{text = i18n("WeatherDistanceMult")}.minWidth = 135
 	element:createLabel{text = i18n("WeatherOffset")}.borderLeft = 10
-	for weatherID = 0, 9 do
+	for _, weatherID in ipairs(getWeatherIDs()) do
 		createNumberEditx2(section, nil, weatherLabel(weatherID),
 			function() return string.format("%0.2f", mge.weather.getDistantFog(weatherID).distance) end,
 			function(delta)
@@ -536,7 +577,7 @@ function this.run()
 	section = createGroup(pane)
 	section:createLabel{text = i18n("WindSectionTitle")}
 	createSpacer(section)
-	for weatherID = 0, 9 do
+	for _, weatherID in ipairs(getWeatherIDs()) do
 		element = createNumberEdit(section, nil, weatherLabel(weatherID),
 			function() return string.format("%0.2f", mge.weather.getWind(weatherID).speed) end,
 			function(x)
@@ -569,7 +610,7 @@ function this.run()
 	element.borderLeft = 190
 	element:createLabel{text = i18n("LightingSun")}.minWidth = 90
 	element:createLabel{text = i18n("LightingAmbient")}
-	for weatherID = 0, 9 do
+	for _, weatherID in ipairs(getWeatherIDs()) do
 		createNumberEditx2(section, nil, weatherLabel(weatherID),
 			function() return string.format("%0.2f", mge.weather.getPerPixelLighting(weatherID).sun) end,
 			function(delta)
