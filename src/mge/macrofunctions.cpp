@@ -269,6 +269,22 @@ void MacroFunctions::ToggleTransparencyAA() {
     displayFlag(TRANSPARENCY_AA, "Transparency AA enabled", "Transparency AA disabled");
 }
 
+void MacroFunctions::ToggleAntiJitterFix() {
+    if (!MWBridge::get()->isAntiJitterPatchInstalled()) {
+        StatusOverlay::setStatus("Anti-jitter fix is unavailable; check mgeXE.log", StatusOverlay::PriorityError);
+        return;
+    }
+
+    Configuration.AntiJitterFix = !Configuration.AntiJitterFix;
+    StatusOverlay::setStatus(Configuration.AntiJitterFix ? "Anti-jitter fix enabled" : "Anti-jitter fix disabled");
+
+    // Unlike most render toggles, this option has no GUI setting. Persist the
+    // macro-selected state immediately so it is retained for the next launch.
+    if (!Configuration.SaveSettings()) {
+        StatusOverlay::setStatus("Unable to save anti-jitter fix setting", StatusOverlay::PriorityError);
+    }
+}
+
 void MacroFunctions::IncreaseViewRange() {
     auto mwBridge = MWBridge::get();
     float r = mwBridge->GetViewDistance();

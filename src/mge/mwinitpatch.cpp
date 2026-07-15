@@ -61,4 +61,8 @@ void MWInitPatch::patch() {
 
     // Patch engine issue with light emissive particle material that affects particle rendering
     mwBridge->patchLightParticleMaterialModifier();
+
+    // Render far-away exterior cells from a nearby temporary origin. The D3D proxy
+    // restores absolute coordinates for distant land while this patch is active.
+    mwBridge->patchAntiJitter();
 }

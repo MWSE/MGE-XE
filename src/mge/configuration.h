@@ -107,6 +107,7 @@ struct ConfigurationStruct {
     float UIScale;
     int WindowAlignX, WindowAlignY;
     bool UseSharedMemory;
+    bool AntiJitterFix;
 
     struct {
         float zoom, zoomRate, zoomRateTarget;

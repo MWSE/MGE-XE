@@ -2,13 +2,342 @@
 // Memory layout originally worked out by Alexander Stasenko
 
 #include "mwbridge.h"
+#include "configuration.h"
+#include "support/log.h"
 #include "assert.h"
 
 #include <cmath>
+#include <cstring>
+#include <vector>
 
 
 
 static MWBridge m_instance;
+
+namespace {
+    struct Point3 {
+        float x, y, z;
+    };
+
+    struct ObjectRenderState {
+        char* object;
+        Point3 worldTranslate;
+        Point3 worldBoundCentre;
+    };
+
+    struct PointRenderState {
+        Point3* point;
+        Point3 value;
+    };
+
+    struct FloatRenderState {
+        float* value;
+        float original;
+    };
+
+    struct RevisionRenderState {
+        unsigned int* value;
+        unsigned int original;
+    };
+
+    struct CameraRenderState {
+        char* camera;
+        float worldToCamera[16];
+        float twoDivRightMinusLeft;
+        float twoDivTopMinusBottom;
+    };
+
+    bool renderOriginActive;
+    bool antiJitterPatchInstalled;
+    bool renderOriginActivationLogged;
+    Point3 renderOrigin;
+
+    constexpr DWORD kRenderMainSceneCall = 0x41C08E;
+    constexpr DWORD kRenderMainScene = 0x41C400;
+    constexpr DWORD kBSParticleNodeVTable = 0x751130;
+    constexpr DWORD kUpdateWorldDataVTableOffset = 0x8C;
+    constexpr DWORD kBSParticleNodeUpdateWorldData = 0x6FAA10;
+
+    constexpr DWORD kNodeIsVisualObject = 0x445A60;
+    constexpr DWORD kNiCameraUpdateWorldData = 0x6CC940;
+    constexpr DWORD kNiBSPNodeUpdateWorldData = 0x6D61D0;
+    constexpr DWORD kNiPointLightUpdateWorldData = 0x6DB940;
+    constexpr DWORD kNiDirectionalLightUpdateWorldData = 0x6D7420;
+    constexpr DWORD kNiSpotLightUpdateWorldData = 0x6DFBE0;
+    constexpr DWORD kNiTextureEffectUpdateWorldData = 0x6E3970;
+    constexpr DWORD kNiLODNodeUpdateWorldData = 0x741200;
+
+    std::vector<char*> renderTraversal;
+    std::vector<ObjectRenderState> objectRenderStates;
+    std::vector<PointRenderState> pointRenderStates;
+    std::vector<FloatRenderState> floatRenderStates;
+    std::vector<RevisionRenderState> revisionRenderStates;
+    std::vector<CameraRenderState> cameraRenderStates;
+
+    void shiftPoint(Point3& point) {
+        point.x -= renderOrigin.x;
+        point.y -= renderOrigin.y;
+        point.z -= renderOrigin.z;
+    }
+
+    void saveAndShiftPoint(Point3* point) {
+        pointRenderStates.push_back({ point, *point });
+        shiftPoint(*point);
+    }
+
+    void saveAndShiftPlane(char* plane) {
+        auto constant = reinterpret_cast<float*>(plane + 0xC);
+        const auto normal = reinterpret_cast<Point3*>(plane);
+        floatRenderStates.push_back({ constant, *constant });
+        *constant -= normal->x * renderOrigin.x + normal->y * renderOrigin.y + normal->z * renderOrigin.z;
+    }
+
+    void saveAndIncrementRevision(char* object) {
+        auto revision = reinterpret_cast<unsigned int*>(object + 0x9C);
+        revisionRenderStates.push_back({ revision, *revision });
+        ++*revision;
+    }
+
+    void rebaseCamera(char* camera) {
+        CameraRenderState state = {};
+        state.camera = camera;
+        std::memcpy(state.worldToCamera, camera + 0x90, sizeof(state.worldToCamera));
+        state.twoDivRightMinusLeft = *reinterpret_cast<float*>(camera + 0xD4);
+        state.twoDivTopMinusBottom = *reinterpret_cast<float*>(camera + 0xD8);
+        cameraRenderStates.push_back(state);
+
+        auto planes = *reinterpret_cast<char***>(camera + 0x14C);
+        const auto planeCount = *reinterpret_cast<unsigned int*>(camera + 0x154);
+        for (unsigned int i = 0; planes && i < planeCount; ++i) {
+            if (planes[i]) {
+                saveAndShiftPlane(planes[i]);
+            }
+        }
+
+        // Only the translation-dependent camera matrix needs rebuilding. Its
+        // direction vectors and frustum are unchanged by a floating origin.
+        const auto worldToCamera = reinterpret_cast<void (__thiscall*)(void*)>(0x6CCC70);
+        worldToCamera(camera);
+    }
+
+    void rebaseTextureEffect(char* effect) {
+        saveAndShiftPlane(effect + 0x130);
+        saveAndIncrementRevision(effect);
+
+        const int coordinateMode = *reinterpret_cast<int*>(effect + 0x118);
+        if (coordinateMode == 2) {
+            return;
+        }
+
+        auto worldProjectionTranslate = reinterpret_cast<Point3*>(effect + 0xFC);
+        pointRenderStates.push_back({ worldProjectionTranslate, *worldProjectionTranslate });
+
+        Point3 projectedOrigin;
+        const auto multiplyVector = reinterpret_cast<Point3* (__thiscall*)(void*, Point3*, const Point3*)>(0x6E8230);
+        multiplyVector(effect + 0xD8, &projectedOrigin, &renderOrigin);
+        worldProjectionTranslate->x += projectedOrigin.x;
+        worldProjectionTranslate->y += projectedOrigin.y;
+        worldProjectionTranslate->z += projectedOrigin.z;
+    }
+
+    void rebaseObject(char* object) {
+        auto worldTranslate = reinterpret_cast<Point3*>(object + 0x64);
+        auto worldBoundCentre = reinterpret_cast<Point3*>(object + 0x1C);
+        objectRenderStates.push_back({ object, *worldTranslate, *worldBoundCentre });
+        shiftPoint(*worldTranslate);
+        shiftPoint(*worldBoundCentre);
+
+        auto vtable = *reinterpret_cast<DWORD**>(object);
+        const DWORD updateWorldData = vtable[kUpdateWorldDataVTableOffset / sizeof(DWORD)];
+        switch (updateWorldData) {
+            case kNiCameraUpdateWorldData:
+                rebaseCamera(object);
+                break;
+            case kNiBSPNodeUpdateWorldData:
+                saveAndShiftPlane(object + 0xC0);
+                break;
+            case kNiPointLightUpdateWorldData:
+            case kNiDirectionalLightUpdateWorldData:
+            case kNiSpotLightUpdateWorldData:
+                saveAndIncrementRevision(object);
+                break;
+            case kNiTextureEffectUpdateWorldData:
+                rebaseTextureEffect(object);
+                break;
+            case kNiLODNodeUpdateWorldData:
+                saveAndShiftPoint(reinterpret_cast<Point3*>(object + 0xE4));
+                break;
+        }
+
+        // NiNode and all of its derived classes use this implementation of
+        // IsVisualObject. Leaves return true and do not contain kChildren.
+        if (vtable[0x64 / sizeof(DWORD)] != kNodeIsVisualObject) {
+            return;
+        }
+
+        auto children = *reinterpret_cast<char***>(object + 0x94);
+        const auto childCount = *reinterpret_cast<unsigned int*>(object + 0x9C);
+        for (unsigned int i = 0; children && i < childCount; ++i) {
+            if (children[i]) {
+                renderTraversal.push_back(children[i]);
+            }
+        }
+    }
+
+    bool hasRenderRootAncestor(char* root, char* const* roots, size_t rootCount) {
+        for (auto parent = *reinterpret_cast<char**>(root + 0x18); parent;
+             parent = *reinterpret_cast<char**>(parent + 0x18)) {
+            for (size_t i = 0; i < rootCount; ++i) {
+                if (parent == roots[i]) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void rebaseRenderRoots(char* const* roots, size_t rootCount) {
+        renderTraversal.clear();
+        objectRenderStates.clear();
+        pointRenderStates.clear();
+        floatRenderStates.clear();
+        revisionRenderStates.clear();
+        cameraRenderStates.clear();
+
+        if (objectRenderStates.capacity() == 0) {
+            renderTraversal.reserve(16384);
+            objectRenderStates.reserve(16384);
+            pointRenderStates.reserve(256);
+            floatRenderStates.reserve(256);
+            revisionRenderStates.reserve(256);
+            cameraRenderStates.reserve(4);
+        }
+
+        for (size_t i = 0; i < rootCount; ++i) {
+            bool duplicate = false;
+            for (size_t j = 0; j < i; ++j) {
+                duplicate |= roots[i] == roots[j];
+            }
+            if (roots[i] && !duplicate && !hasRenderRootAncestor(roots[i], roots, rootCount)) {
+                // Keep the root's local transform consistent so any narrowly
+                // targeted engine update during rendering inherits the same origin.
+                saveAndShiftPoint(reinterpret_cast<Point3*>(roots[i] + 0x30));
+                renderTraversal.push_back(roots[i]);
+            }
+        }
+
+        while (!renderTraversal.empty()) {
+            auto object = renderTraversal.back();
+            renderTraversal.pop_back();
+            rebaseObject(object);
+        }
+    }
+
+    void restoreRenderRoots() {
+        for (auto& state : objectRenderStates) {
+            *reinterpret_cast<Point3*>(state.object + 0x64) = state.worldTranslate;
+            *reinterpret_cast<Point3*>(state.object + 0x1C) = state.worldBoundCentre;
+        }
+        for (auto& state : pointRenderStates) {
+            *state.point = state.value;
+        }
+        for (auto& state : floatRenderStates) {
+            *state.value = state.original;
+        }
+        for (auto& state : revisionRenderStates) {
+            *state.value = state.original;
+        }
+        for (auto& state : cameraRenderStates) {
+            std::memcpy(state.camera + 0x90, state.worldToCamera, sizeof(state.worldToCamera));
+            *reinterpret_cast<float*>(state.camera + 0xD4) = state.twoDivRightMinusLeft;
+            *reinterpret_cast<float*>(state.camera + 0xD8) = state.twoDivTopMinusBottom;
+        }
+    }
+
+    void __fastcall updateWorldDataAntiJitter(char* particleNode) {
+        const auto updateWorldData = reinterpret_cast<void (__thiscall*)(void*)>(kBSParticleNodeUpdateWorldData);
+        updateWorldData(particleNode);
+
+        const bool followsParent = (*reinterpret_cast<unsigned short*>(particleNode + 0x14) & 0x80) != 0;
+        if (followsParent || !renderOriginActive) {
+            return;
+        }
+
+        auto localTranslate = reinterpret_cast<Point3*>(particleNode + 0x30);
+        auto worldTranslate = reinterpret_cast<Point3*>(particleNode + 0x64);
+        const bool firstUpdate = (particleNode[0xB0] & 0x2) != 0;
+
+        if (firstUpdate) {
+            // The engine persists an initial world-space position in localTranslate.
+            // Keep that position absolute while this pass's world transform is rebased.
+            localTranslate->x += renderOrigin.x;
+            localTranslate->y += renderOrigin.y;
+            localTranslate->z += renderOrigin.z;
+        }
+        else {
+            // Non-following particles ignore their parent transform after initialization.
+            worldTranslate->x -= renderOrigin.x;
+            worldTranslate->y -= renderOrigin.y;
+            worldTranslate->z -= renderOrigin.z;
+        }
+    }
+
+    void __cdecl renderMainSceneAntiJitter() {
+        const auto renderMainScene = reinterpret_cast<void (__cdecl*)()>(kRenderMainScene);
+
+        if (!Configuration.AntiJitterFix) {
+            renderMainScene();
+            return;
+        }
+
+        const auto dataHandler = *reinterpret_cast<char**>(0x7C67E0);
+        const auto worldController = *reinterpret_cast<char**>(0x7C67DC);
+        const auto currentCell = dataHandler ? *reinterpret_cast<char**>(dataHandler + 0xB540) : nullptr;
+        const bool isInterior = currentCell && ((*reinterpret_cast<unsigned int*>(currentCell + 0x18) & 0x1) != 0);
+        if (!worldController || !currentCell || isInterior) {
+            renderMainScene();
+            return;
+        }
+
+        const auto getGridX = reinterpret_cast<int (__thiscall*)(const void*)>(0x4DB9D0);
+        const auto getGridY = reinterpret_cast<int (__thiscall*)(const void*)>(0x4DB9F0);
+        const int gridX = getGridX(currentCell);
+        const int gridY = getGridY(currentCell);
+        constexpr int minimumCellDistance = 20;
+        if (gridX > -minimumCellDistance && gridX < minimumCellDistance &&
+            gridY > -minimumCellDistance && gridY < minimumCellDistance) {
+            renderMainScene();
+            return;
+        }
+
+        constexpr float exteriorGridWidth = 8192.0f;
+        renderOrigin = { gridX * exteriorGridWidth, gridY * exteriorGridWidth, 0.0f };
+
+        char* renderRoots[] = {
+            *reinterpret_cast<char**>(worldController + 0x12C),
+            *reinterpret_cast<char**>(worldController + 0x158),
+            *reinterpret_cast<char**>(worldController + 0x2B8),
+        };
+
+        if (!renderRoots[0]) {
+            renderMainScene();
+            return;
+        }
+
+        if (!renderOriginActivationLogged) {
+            LOG::logline("Anti-jitter fix activated in exterior cell (%d, %d).", gridX, gridY);
+            renderOriginActivationLogged = true;
+        }
+
+        renderOriginActive = true;
+        rebaseRenderRoots(renderRoots, _countof(renderRoots));
+
+        renderMainScene();
+
+        renderOriginActive = false;
+        restoreRenderRoots();
+    }
+}
 
 
 class VirtualMemWriteAccessor {
@@ -1464,6 +1793,66 @@ void MWBridge::patchWorldRenderingAccumulation() {
     // Patch main scene rendering function.
     VirtualMemWriteAccessor vw((void*)addr, 4);
     write_dword(addr + 1, reinterpret_cast<DWORD>(&patchCameraClick) - addr - 5);
+}
+
+//-----------------------------------------------------------------------------
+
+// patchAntiJitter - Temporarily moves exterior render roots near the current cell.
+// Distant land continues using absolute coordinates through restoreDistantView.
+void MWBridge::patchAntiJitter() {
+    const DWORD currentRenderTarget = *reinterpret_cast<DWORD*>(kRenderMainSceneCall + 1) + kRenderMainSceneCall + 5;
+    const DWORD currentParticleUpdate = *reinterpret_cast<DWORD*>(kBSParticleNodeVTable + kUpdateWorldDataVTableOffset);
+    bool renderHookInstalled = false;
+
+    if (*reinterpret_cast<BYTE*>(kRenderMainSceneCall) != 0xE8 || currentRenderTarget != kRenderMainScene) {
+        LOG::logline("Anti-jitter fix not installed: the main scene render call has an unexpected instruction.");
+    }
+    else {
+        VirtualMemWriteAccessor vw(reinterpret_cast<void*>(kRenderMainSceneCall), 5);
+        write_dword(kRenderMainSceneCall + 1, reinterpret_cast<DWORD>(&renderMainSceneAntiJitter) - kRenderMainSceneCall - 5);
+        renderHookInstalled = true;
+    }
+
+    if (currentParticleUpdate != kBSParticleNodeUpdateWorldData) {
+        LOG::logline("Anti-jitter particle support not installed: the update hook was already modified.");
+    }
+    else {
+        const DWORD vtableEntry = kBSParticleNodeVTable + kUpdateWorldDataVTableOffset;
+        VirtualMemWriteAccessor vw(reinterpret_cast<void*>(vtableEntry), sizeof(void*));
+        write_ptr(vtableEntry, reinterpret_cast<void*>(&updateWorldDataAntiJitter));
+    }
+
+    if (renderHookInstalled) {
+        LOG::logline("Anti-jitter fix installed.");
+        antiJitterPatchInstalled = true;
+    }
+}
+
+bool MWBridge::isAntiJitterPatchInstalled() const {
+    return antiJitterPatchInstalled;
+}
+
+// restoreDistantView - Undo the temporary render-root translation for geometry
+// stored in MGE's absolute distant-world coordinate system.
+void MWBridge::restoreDistantView(D3DMATRIX* view) {
+    if (!renderOriginActive) {
+        return;
+    }
+
+    D3DXMATRIX translation, restored;
+    D3DXMatrixTranslation(&translation, -renderOrigin.x, -renderOrigin.y, -renderOrigin.z);
+    D3DXMatrixMultiply(&restored, &translation, static_cast<D3DXMATRIX*>(view));
+    *view = restored;
+}
+
+// restoreDistantWorld - Return a captured rebased world transform to absolute
+// coordinates before MGE replays it against the restored distant view.
+void MWBridge::restoreDistantWorld(D3DMATRIX* world) {
+    if (renderOriginActive) {
+        world->_41 += renderOrigin.x;
+        world->_42 += renderOrigin.y;
+        world->_43 += renderOrigin.z;
+    }
 }
 
 //-----------------------------------------------------------------------------
