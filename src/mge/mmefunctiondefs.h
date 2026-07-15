@@ -16,6 +16,7 @@ public:
     static void ToggleGrass();
     static void ToggleLightingMode();
     static void ToggleTransparencyAA();
+    static void ToggleAntiJitterFix();
     static void IncreaseViewRange();
     static void DecreaseViewRange();
     static void ToggleZoom();
@@ -129,6 +130,7 @@ enum GraphicsFuncs {
     GF_MoveRight3PC = 51,
     GF_MoveDown3PC = 52,
     GF_MoveUp3PC = 53,
+    GF_ToggleAntiJitterFix = 54,     // Toggles the far-from-origin jitter fix
     MGEINPUT_GRAPHICSFUNCS          // Handy way of getting the number of elements in an enum
 };
 

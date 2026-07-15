@@ -125,6 +125,13 @@ public:
     void patchLoadTexture2D();
     void patchLightParticleMaterialModifier();
     void patchWorldRenderingAccumulation();
+    void patchAntiJitter();
+    bool isAntiJitterPatchInstalled() const;
+
+    // Keep MGE distant-world rendering in absolute coordinates while the
+    // Morrowind scenegraph is temporarily rebased.
+    void restoreDistantView(D3DMATRIX* view);
+    void restoreDistantWorld(D3DMATRIX* world);
 
     void* getGMSTPointer(DWORD id);
     DWORD getKeybindCode(DWORD action);

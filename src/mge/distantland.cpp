@@ -24,6 +24,7 @@ void DistantLand::renderStage0() {
     // Get Morrowind camera matrices
     device->GetTransform(D3DTS_VIEW, &mwView);
     device->GetTransform(D3DTS_PROJECTION, &mwProj);
+    mwBridge->restoreDistantView(&mwView);
 
     // Set variables derived from current game state and camera configuration
     setView(&mwView);
@@ -922,6 +923,7 @@ bool DistantLand::inspectIndexedPrimitive(int sceneCount, const RenderedState* r
     // Special case, capture sky
     if (recordMW.empty() && rs->blendEnable && sceneCount == 0 && mwBridge->CellHasWeather()) {
         recordSky.emplace_back(*rs);
+        mwBridge->restoreDistantWorld(&recordSky.back().worldTransforms[0]);
 
         // Check for moon geometry, and mark those records by setting lighting off
         if (frs->material.emissive.a == kMoonTag) {

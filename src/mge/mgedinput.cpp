@@ -115,6 +115,7 @@ void* CreateInputWrapper(void* real) {
     FakeFuncs[GF_ToggleMwMgeBlending] = MacroFunctions::ToggleBlending;
     FakeFuncs[GF_ToggleLightingMode] = MacroFunctions::ToggleLightingMode;
     FakeFuncs[GF_ToggleTrAA] = MacroFunctions::ToggleTransparencyAA;
+    FakeFuncs[GF_ToggleAntiJitterFix] = MacroFunctions::ToggleAntiJitterFix;
 
     FakeFuncs[GF_MoveForward3PC] = MacroFunctions::MoveForward3PCam;
     FakeFuncs[GF_MoveBack3PC] = MacroFunctions::MoveBack3PCam;

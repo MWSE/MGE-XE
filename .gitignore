@@ -3,3 +3,6 @@
 /bin/
 *.vcxproj.user
 *.csproj.user
+*.obj
+*.tlog
+*.pdb
